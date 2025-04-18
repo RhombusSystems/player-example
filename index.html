@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        video {
+            width: 640px;
+            height: 360px;
+        }
+    </style>
+    <script src="https://cdn.dashjs.org/v4.7.2/dash.all.min.js"></script>
+    <script>
+        //  Get this UUID from your camera detail page, or camera list API
+        const CAMERA_UUID = "NEED_CAMERA_UUID" 
+
+        // FILL THESE OUT --> Your server paths
+        const BASE_URL = "NEED_YOUR_SERVER_URL"; // ex: https://www.example.com/api
+        const GET_FEDERATED_TOKEN_PATH = "NEED_YOUR_FEDERATED_TOKEN_PATH"; // proxy requests to Rhombus API: /org/generateFederatedSessionToken
+        const GET_MEDIA_URIS_PATH = "NEED_YOUR_MEDIA_URI_PATH"; // proxy requests to Rhombus API: /camera/getMediaUris 
+
+        [CAMERA_UUID, BASE_URL, GET_FEDERATED_TOKEN_PATH, GET_MEDIA_URIS_PATH].forEach(x => {
+            if(x.startsWith("NEED")) {
+                throw new Error(`${x}`);
+            }
+        })
+
+        // Headers for your server
+        const headers = {
+            "Content-Type": "application/json",
+            "x-auth-scheme": "api-token",
+            accept: "application/json",
+        }
+
+        // Get a federated token from your server (should just be a proxy call)
+        async function getFederatedSessionToken(durationSec) {
+            const url = `${BASE_URL}${GET_FEDERATED_TOKEN_PATH}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ durationSec })
+            });
+            
+            const data = await response.json();
+            return data.federatedSessionToken;
+        }
+
+        // Get a list of media uris (similarly, just a proxy call)
+        async function getMediaUri(cameraUuid, federatedSessionToken) {
+            const url = `${BASE_URL}${GET_MEDIA_URIS_PATH}`
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ cameraUuid })
+            });
+            
+            const data = await response.json();
+            return data.wanLiveMpdUri            
+        }
+
+        // Main function to stream the video
+        async function streamVideo(cameraUuid) {
+            // Step 1: Get the federated session token (duration 24 hours for example)
+            const federatedSessionToken = await getFederatedSessionToken(86400);
+
+            // Step 2: Get the media URI for the camera
+            const mediaUri = await getMediaUri(cameraUuid, federatedSessionToken);
+            // const mediaUri = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd";
+
+            // Step 3: Set up the video player in the DOM
+            const videoElement = document.querySelector("#videoPlayer");
+
+            // Step 4: Create a DashJS Media player
+            const player = dashjs.MediaPlayer().create();
+            
+            // Step 4: override request modifiers to add two query params: x-auth-scheme, and x-auth-ft
+            player.extend("RequestModifier", function() {
+                console.log("extending request modifier...")
+                return {
+                    modifyRequestHeader: function (xhr, {url}) {
+                        return xhr;
+                    },
+                    modifyRequestURL: function (url) {
+                        /* Modify url adding a custom query string parameter */
+                        return url + `?x-auth-scheme=federated-token&x-auth-ft=${federatedSessionToken || "MISSING_FEDERATED_TOKEN"}`;
+                    },
+                    modifyRequest(request) {
+                        return request;
+                    },
+                }
+            }, true);
+
+            // [OPTIONAL] Step 5 - Settings for DashJS
+            const settings = {
+                debug: {
+                  logLevel: 5,
+                  dispatchEvent: true,
+                },
+                streaming: {
+                    scheduling: {
+                        // Set to false when live so that paused live feeds will not consume network bandwidth.
+                        // This is especially important for shareMode, but always desired.
+                        scheduleWhilePaused: false,
+                        defaultTimeout: 5000,
+                    },
+                    delay: {
+                        liveDelayFragmentCount: 4,
+                    },
+                    liveCatchup: {
+                        // Maximum drift allowed in seconds before the player tries to catch up
+                        maxDrift: 10, // Example value: Allow up to 10 seconds of drift
+
+                        // Playback rate control for catch-up mode
+                        playbackRate: {
+                            min: -0.5, // Valid values for min catch up rate are in the range -0.5 to 0 (-50% to 0% playback rate decrease)
+                            max: 1.0, // Valid values for max catch up rate are in the range 0 to 1 (0% to 100% playback rate increase).
+                        },
+
+                        // Minimum buffer size required to enter catch-up mode
+                        playbackBufferMin: 15, // Example value: Require at least 60 seconds of buffer
+
+                        // Enable or disable live catch-up mode
+                        enabled: true, // Example value: Enable live catch-up mode
+
+                        // Mode of catch-up (available modes: "accurate", "fast", "none")
+                        mode: "fast", // Example value: Use accurate catch-up mode
+                    },
+                    gaps: {
+                        jumpGaps: true,
+                        jumpLargeGaps: true,
+                        smallGapLimit: 1.5,
+                        threshold: 0.3,
+                        enableSeekFix: true,
+                        enableStallFix: true,
+                        stallSeek: 0.1,
+                    },
+                    buffer: {
+                        flushBufferAtTrackSwitch: true,
+                        fastSwitchEnabled: true,
+                        initialBufferLevel: NaN,
+                        bufferTimeAtTopQuality: 30,
+                        bufferTimeAtTopQualityLongForm: 60,
+                        
+                        longFormContentDurationThreshold: 600,
+                    },
+                    // We don't support multiple qualities yet and this helps
+                    // the player recover properly from running low on buffer
+                    abr: {
+                        autoSwitchBitrate: {
+                            video: false,
+                            audio: false,
+                        },
+                    },
+                },
+            };
+            
+            player.updateSettings(settings);
+
+            // Step 6 - Start the video
+            player.initialize(videoElement, mediaUri, true);
+                        
+        }
+
+        // Kick off the video
+        streamVideo(CAMERA_UUID);
+    </script>
+    <title>Camera Stream</title>
+</head>
+<body>
+    <h1>Rhombus Camera Stream</h1>
+    <video id="videoPlayer" controls></video>
+</body>
+
+</html>
