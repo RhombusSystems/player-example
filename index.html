@@ -65,7 +65,6 @@
 
             // Step 2: Get the media URI for the camera
             const mediaUri = await getMediaUri(cameraUuid, federatedSessionToken);
-            // const mediaUri = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd";
 
             // Step 3: Set up the video player in the DOM
             const videoElement = document.querySelector("#videoPlayer");
@@ -75,7 +74,6 @@
             
             // Step 4: override request modifiers to add two query params: x-auth-scheme, and x-auth-ft
             player.extend("RequestModifier", function() {
-                console.log("extending request modifier...")
                 return {
                     modifyRequestHeader: function (xhr, {url}) {
                         return xhr;
