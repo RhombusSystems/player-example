@@ -11,6 +11,9 @@
     </style>
     <script src="https://cdn.dashjs.org/v4.7.2/dash.all.min.js"></script>
     <script>
+        // Reference to DashJS player
+        var player = null;
+
         //  Get this UUID from your camera detail page, or camera list API
         const CAMERA_UUID = "NEED_CAMERA_UUID" 
 
@@ -70,7 +73,7 @@
             const videoElement = document.querySelector("#videoPlayer");
 
             // Step 4: Create a DashJS Media player
-            const player = dashjs.MediaPlayer().create();
+            player = dashjs.MediaPlayer().create();
             
             // Step 4: override request modifiers to add two query params: x-auth-scheme, and x-auth-ft
             player.extend("RequestModifier", function() {
@@ -159,7 +162,13 @@
                         
         }
 
-        // Kick off the video
+        // Example functions to hook in externally and play / pause video.
+
+        function play() { if (player) player.play(); }
+
+        function pause() { if(player) player.pause(); }
+
+        // Main Entry: Kick off the video
         streamVideo(CAMERA_UUID);
     </script>
     <title>Camera Stream</title>
